@@ -93,4 +93,4 @@ README.md       # 프로젝트 개요
 
 | 기능 | 단계 | 상태 | 관련 파일 |
 |------|------|------|-----------|
-| (없음) | - | - | - |
+| 차량 상세 조회 (Car Detail Lookup) | 2단계 — Implementation Plan | 🟡 피드백 대기 | `docs/plans/car-detail-lookup-plan.md` |
