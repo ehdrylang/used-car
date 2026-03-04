@@ -107,6 +107,8 @@ button {
 
 .side-panel {
   padding: 16px;
+  max-height: calc(100vh - 48px);
+  overflow: auto;
 }
 
 .right-panel {
@@ -116,6 +118,17 @@ button {
 .panel-title {
   margin: 0 0 14px;
   font-size: 20px;
+}
+
+.category-section + .category-section {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px dashed var(--line);
+}
+
+.category-section .panel-title {
+  margin-bottom: 10px;
+  font-size: 17px;
 }
 
 .back-btn {
@@ -153,7 +166,7 @@ button {
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 68vh;
+  max-height: 28vh;
   overflow: auto;
 }
 
@@ -172,6 +185,23 @@ button {
   padding: 10px 12px;
   cursor: pointer;
   text-align: left;
+}
+
+.option-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-right: 10px;
+}
+
+.option-main {
+  font-weight: 600;
+}
+
+.option-sub {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .brand-btn:hover,
@@ -225,12 +255,56 @@ button {
   padding: 14px;
 }
 
+.selection-summary {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fbfcff;
+  padding: 14px;
+}
+
+.summary-title {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.summary-row {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px dashed #e3e9f4;
+}
+
+.summary-row:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.summary-label {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.summary-value {
+  font-weight: 600;
+}
+
 @media (max-width: 900px) {
   .kcar-layout {
     grid-template-columns: 1fr;
   }
 
+  .side-panel {
+    max-height: none;
+  }
+
   .brand-list {
-    max-height: 38vh;
+    max-height: 32vh;
+  }
+
+  .summary-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 }

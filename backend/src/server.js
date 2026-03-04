@@ -50,6 +50,11 @@ function apiError(code, message, status = 500, extra = {}) {
   return error;
 }
 
+function normalizeCount(value) {
+  const count = Number(value);
+  return Number.isFinite(count) ? count : 0;
+}
+
 async function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let raw = "";
@@ -91,25 +96,53 @@ function normalizeBrand(item) {
     mnuftrCd: String(item?.mnuftrCd || ""),
     pathNm: String(item?.pathNm || ""),
     carType: item?.carType === "IMP" ? "IMP" : "KOR",
-    count: Number.isFinite(item?.count) ? item.count : 0,
+    count: normalizeCount(item?.count),
   };
 }
 
-async function fetchKcarBrands(sellType) {
+function normalizeModelGroup(item) {
+  return {
+    mnuftrCd: String(item?.mnuftrCd || ""),
+    modelGrpCd: String(item?.modelGrpCd || ""),
+    modelGrpNm: String(item?.modelGrpNm || ""),
+    count: normalizeCount(item?.count),
+  };
+}
+
+function normalizeModel(item) {
+  return {
+    mnuftrCd: String(item?.mnuftrCd || ""),
+    modelGrpCd: String(item?.modelGrpCd || ""),
+    modelCd: String(item?.modelCd || ""),
+    modelNm: String(item?.modelNm || ""),
+    prdcnYear: String(item?.prdcnYear || ""),
+    count: normalizeCount(item?.count),
+  };
+}
+
+function normalizeGrade(item) {
+  return {
+    mnuftrCd: String(item?.mnuftrCd || ""),
+    modelGrpCd: String(item?.modelGrpCd || ""),
+    modelCd: String(item?.modelCd || ""),
+    grdCd: String(item?.grdCd || ""),
+    grdNm: String(item?.grdNm || ""),
+    count: normalizeCount(item?.count),
+  };
+}
+
+async function fetchKcarGroup(path, body, normalizeItem) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), config.kcarTimeoutMs);
 
   try {
-    const response = await fetch(`${config.kcarApiBaseUrl}/bc/search/group/mnuftr`, {
+    const response = await fetch(`${config.kcarApiBaseUrl}/bc/search/group/${path}`, {
       method: "POST",
       headers: {
         Accept: "application/json, text/plain, */*",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        wr_eq_sell_dcd: sellType,
-        wr_in_multi_columns: "cntr_rgn_cd|cntr_cd",
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
 
@@ -123,7 +156,7 @@ async function fetchKcarBrands(sellType) {
       throw apiError("UPSTREAM_ERROR", "KCAR API 응답 형식이 올바르지 않습니다.", 502);
     }
 
-    return rows.map(normalizeBrand);
+    return rows.map(normalizeItem);
   } catch (error) {
     if (error.name === "AbortError") {
       throw apiError("TIMEOUT", "KCAR API 호출 시간이 초과되었습니다.", 504);
@@ -137,6 +170,56 @@ async function fetchKcarBrands(sellType) {
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+async function fetchKcarBrands(sellType) {
+  return fetchKcarGroup(
+    "mnuftr",
+    {
+      wr_eq_sell_dcd: sellType,
+      wr_in_multi_columns: "cntr_rgn_cd|cntr_cd",
+    },
+    normalizeBrand,
+  );
+}
+
+async function fetchKcarModelGroups(sellType, mnuftrCd) {
+  return fetchKcarGroup(
+    "modelGrp",
+    {
+      wr_eq_sell_dcd: sellType,
+      wr_in_multi_columns: "cntr_rgn_cd|cntr_cd",
+      wr_eq_mnuftr_cd: mnuftrCd,
+    },
+    normalizeModelGroup,
+  );
+}
+
+async function fetchKcarModels(sellType, mnuftrCd, modelGrpCd) {
+  return fetchKcarGroup(
+    "model",
+    {
+      wr_eq_sell_dcd: sellType,
+      wr_in_multi_columns: "cntr_rgn_cd|cntr_cd",
+      wr_eq_mnuftr_cd: mnuftrCd,
+      wr_eq_model_grp_cd: modelGrpCd,
+    },
+    normalizeModel,
+  );
+}
+
+async function fetchKcarGrades(sellType, mnuftrCd, modelGrpCd, modelCd) {
+  return fetchKcarGroup(
+    "grd",
+    {
+      wr_eq_sell_dcd: sellType,
+      wr_in_multi_columns: "cntr_rgn_cd|cntr_cd",
+      wr_eq_mnuftr_cd: mnuftrCd,
+      wr_eq_model_grp_cd: modelGrpCd,
+      wr_eq_model_cd: modelCd,
+    },
+    normalizeGrade,
+  );
 }
 
 function parseSellType(body) {
@@ -155,6 +238,39 @@ function parseSellType(body) {
   }
 
   return value;
+}
+
+function parseRequiredCode(body, fieldName) {
+  const raw = body[fieldName];
+  if (raw == null || raw === "") {
+    throw apiError("BAD_REQUEST", `${fieldName}은(는) 필수입니다.`, 400);
+  }
+
+  if (typeof raw !== "string") {
+    throw apiError("BAD_REQUEST", `${fieldName}은(는) 문자열이어야 합니다.`, 400);
+  }
+
+  const value = raw.trim();
+  if (!value) {
+    throw apiError("BAD_REQUEST", `${fieldName}은(는) 빈 문자열일 수 없습니다.`, 400);
+  }
+
+  return value;
+}
+
+function validateRows(rows, keyName) {
+  return rows.filter((item) => item[keyName]);
+}
+
+function buildSuccessResponse(data) {
+  return {
+    success: true,
+    data,
+    meta: {
+      source: "kcar",
+      fetchedAt: nowIso(),
+    },
+  };
 }
 
 function routeNotFound(res, corsHeaders) {
@@ -231,21 +347,105 @@ const server = createServer(async (req, res) => {
 
       const body = await readJsonBody(req);
       const sellType = parseSellType(body);
-      const brands = await fetchKcarBrands(sellType);
+      const brands = validateRows(await fetchKcarBrands(sellType), "mnuftrCd");
 
-      toJson(
-        res,
-        200,
-        {
-          success: true,
-          data: brands,
-          meta: {
-            source: "kcar",
-            fetchedAt: nowIso(),
+      toJson(res, 200, buildSuccessResponse(brands), corsHeaders);
+      return;
+    }
+
+    if (req.url === "/api/kcar/model-groups") {
+      if (req.method !== "POST") {
+        toJson(
+          res,
+          405,
+          {
+            success: false,
+            error: {
+              code: "METHOD_NOT_ALLOWED",
+              message: "POST 메서드만 허용됩니다.",
+            },
           },
-        },
-        corsHeaders,
+          {
+            ...corsHeaders,
+            Allow: "POST,OPTIONS",
+          },
+        );
+        return;
+      }
+
+      const body = await readJsonBody(req);
+      const sellType = parseSellType(body);
+      const mnuftrCd = parseRequiredCode(body, "mnuftrCd");
+      const modelGroups = validateRows(
+        await fetchKcarModelGroups(sellType, mnuftrCd),
+        "modelGrpCd",
       );
+
+      toJson(res, 200, buildSuccessResponse(modelGroups), corsHeaders);
+      return;
+    }
+
+    if (req.url === "/api/kcar/models") {
+      if (req.method !== "POST") {
+        toJson(
+          res,
+          405,
+          {
+            success: false,
+            error: {
+              code: "METHOD_NOT_ALLOWED",
+              message: "POST 메서드만 허용됩니다.",
+            },
+          },
+          {
+            ...corsHeaders,
+            Allow: "POST,OPTIONS",
+          },
+        );
+        return;
+      }
+
+      const body = await readJsonBody(req);
+      const sellType = parseSellType(body);
+      const mnuftrCd = parseRequiredCode(body, "mnuftrCd");
+      const modelGrpCd = parseRequiredCode(body, "modelGrpCd");
+      const models = validateRows(await fetchKcarModels(sellType, mnuftrCd, modelGrpCd), "modelCd");
+
+      toJson(res, 200, buildSuccessResponse(models), corsHeaders);
+      return;
+    }
+
+    if (req.url === "/api/kcar/grades") {
+      if (req.method !== "POST") {
+        toJson(
+          res,
+          405,
+          {
+            success: false,
+            error: {
+              code: "METHOD_NOT_ALLOWED",
+              message: "POST 메서드만 허용됩니다.",
+            },
+          },
+          {
+            ...corsHeaders,
+            Allow: "POST,OPTIONS",
+          },
+        );
+        return;
+      }
+
+      const body = await readJsonBody(req);
+      const sellType = parseSellType(body);
+      const mnuftrCd = parseRequiredCode(body, "mnuftrCd");
+      const modelGrpCd = parseRequiredCode(body, "modelGrpCd");
+      const modelCd = parseRequiredCode(body, "modelCd");
+      const grades = validateRows(
+        await fetchKcarGrades(sellType, mnuftrCd, modelGrpCd, modelCd),
+        "grdCd",
+      );
+
+      toJson(res, 200, buildSuccessResponse(grades), corsHeaders);
       return;
     }
 

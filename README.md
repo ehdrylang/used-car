@@ -18,9 +18,16 @@
   - 백엔드 프록시(`/api/kcar/brands`) 연동
   - 브랜드 단일 선택
   - 로딩/오류/빈 데이터 상태 처리
+- KCAR 2/3/4차 카테고리 선택 단계 구현
+  - 2차(모델군), 3차(세부 모델), 4차(등급/트림) 순차 선택
+  - 상위 선택 변경 시 하위 단계 초기화
+  - 단계별 로딩/오류/빈 데이터 상태 처리
 - KCAR 백엔드 프록시 서버 구현
   - CORS 허용 origin 화이트리스트
   - `POST /api/kcar/brands` (KCAR 업스트림 대리 호출)
+  - `POST /api/kcar/model-groups`
+  - `POST /api/kcar/models`
+  - `POST /api/kcar/grades`
   - `GET /health`
   - 표준 에러 포맷(`BAD_REQUEST`, `UPSTREAM_ERROR`, `TIMEOUT`, `INTERNAL_ERROR`)
 
