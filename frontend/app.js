@@ -27,6 +27,10 @@ const appState = {
   models: [],
   grades: [],
   drctRows: [],
+  drctTotalCount: 0,
+  drctPageNo: 1,
+  drctTotalPageCount: 1,
+  drctLimit: 26,
   errorMessageByStage: {
     brand: "",
     modelGroup: "",
@@ -60,13 +64,36 @@ function isVisibleCount(item) {
   return item.count > 0;
 }
 
-function sortByCountAndName(items, nameKey) {
+function sortByLabelAndCode(items, nameKey, codeKey) {
   return [...items].sort((a, b) => {
-    if (b.count !== a.count) {
-      return b.count - a.count;
+    const labelCompare = String(a[nameKey]).localeCompare(String(b[nameKey]), "ko", {
+      numeric: true,
+      sensitivity: "base",
+    });
+    if (labelCompare !== 0) {
+      return labelCompare;
     }
-    return String(a[nameKey]).localeCompare(String(b[nameKey]), "ko");
+    return String(a[codeKey]).localeCompare(String(b[codeKey]), "ko", {
+      numeric: true,
+      sensitivity: "base",
+    });
   });
+}
+
+function parsePositiveInt(value) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed;
+}
+
+function parseNonNegativeInt(value) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+  return parsed;
 }
 
 function normalizeBrandRow(row) {
@@ -182,6 +209,10 @@ function resetGradeStage() {
 
 function resetDrctStage() {
   appState.drctRows = [];
+  appState.drctTotalCount = 0;
+  appState.drctPageNo = 1;
+  appState.drctTotalPageCount = 1;
+  appState.drctLimit = 26;
   appState.drctLoadState = "idle";
   appState.errorMessageByStage.drct = "";
 }
@@ -239,13 +270,15 @@ async function fetchBrands() {
       .map(normalizeBrandRow)
       .filter((item) => item.mnuftrCd)
       .filter(isVisibleCount);
-    const kor = sortByCountAndName(
+    const kor = sortByLabelAndCode(
       normalized.filter((item) => item.carType === "KOR"),
       "pathNm",
+      "mnuftrCd",
     );
-    const imp = sortByCountAndName(
+    const imp = sortByLabelAndCode(
       normalized.filter((item) => item.carType === "IMP"),
       "pathNm",
+      "mnuftrCd",
     );
 
     appState.brandsByType = { KOR: kor, IMP: imp };
@@ -288,12 +321,13 @@ async function fetchModelGroups(mnuftrCd) {
     }
 
     const rows = Array.isArray(payload?.data) ? payload.data : [];
-    const items = sortByCountAndName(
+    const items = sortByLabelAndCode(
       rows
         .map(normalizeModelGroupRow)
         .filter((item) => item.modelGrpCd)
         .filter(isVisibleCount),
       "modelGrpNm",
+      "modelGrpCd",
     );
 
     appState.modelGroups = items;
@@ -335,12 +369,13 @@ async function fetchModels(mnuftrCd, modelGrpCd) {
     }
 
     const rows = Array.isArray(payload?.data) ? payload.data : [];
-    const items = sortByCountAndName(
+    const items = sortByLabelAndCode(
       rows
         .map(normalizeModelRow)
         .filter((item) => item.modelCd)
         .filter(isVisibleCount),
       "modelNm",
+      "modelCd",
     );
 
     appState.models = items;
@@ -382,12 +417,13 @@ async function fetchGrades(mnuftrCd, modelGrpCd, modelCd) {
     }
 
     const rows = Array.isArray(payload?.data) ? payload.data : [];
-    const items = sortByCountAndName(
+    const items = sortByLabelAndCode(
       rows
         .map(normalizeGradeRow)
         .filter((item) => item.grdCd)
         .filter(isVisibleCount),
       "grdNm",
+      "grdCd",
     );
 
     appState.grades = items;
@@ -423,14 +459,22 @@ function normalizeDrctRows(data) {
   return [];
 }
 
-async function fetchDrctList(mnuftrCd, modelGrpCd, modelCd, grdCd) {
+async function fetchDrctList(mnuftrCd, modelGrpCd, modelCd, grdCd, pageNo = 1) {
+  const safePageNo = parsePositiveInt(pageNo) || 1;
   const requestSeq = bumpRequestSeq("drct");
   appState.drctLoadState = "loading";
   appState.errorMessageByStage.drct = "";
   render();
 
   try {
-    const plainParam = createDrctPlainParam({ mnuftrCd, modelGrpCd, modelCd, grdCd });
+    const plainParam = createDrctPlainParam({
+      mnuftrCd,
+      modelGrpCd,
+      modelCd,
+      grdCd,
+      pageno: safePageNo,
+      limit: appState.drctLimit,
+    });
     const enc = await createKcarEnc(plainParam);
     const payload = await postJson(KCAR_DRCT_ENDPOINT, { enc });
 
@@ -438,8 +482,19 @@ async function fetchDrctList(mnuftrCd, modelGrpCd, modelCd, grdCd) {
       return;
     }
 
-    const rows = normalizeDrctRows(payload?.data);
+    const data = payload?.data || {};
+    const rows = normalizeDrctRows(data);
+    const totalCount = parseNonNegativeInt(data?.totalCnt) ?? rows.length;
+    const currentPage = parsePositiveInt(data?.pageNo) ?? safePageNo;
+    const limit = parsePositiveInt(data?.limit) ?? parsePositiveInt(plainParam.limit) ?? 26;
+    const computedTotalPageCount = Math.max(1, Math.ceil(totalCount / limit));
+    const totalPageCount = parsePositiveInt(data?.totalPageCnt) ?? computedTotalPageCount;
+
     appState.drctRows = rows;
+    appState.drctTotalCount = totalCount;
+    appState.drctPageNo = Math.min(currentPage, totalPageCount);
+    appState.drctTotalPageCount = totalPageCount;
+    appState.drctLimit = limit;
     appState.drctLoadState = rows.length ? "success" : "empty";
     render();
   } catch {
@@ -447,6 +502,9 @@ async function fetchDrctList(mnuftrCd, modelGrpCd, modelCd, grdCd) {
       return;
     }
     appState.drctRows = [];
+    appState.drctTotalCount = 0;
+    appState.drctPageNo = safePageNo;
+    appState.drctTotalPageCount = 1;
     appState.drctLoadState = "error";
     appState.errorMessageByStage.drct =
       "판매상품 목록을 불러오지 못했습니다. 다시 시도해주세요.";
@@ -718,6 +776,9 @@ function renderSelectionSummary() {
 }
 
 function readDrctTitle(row) {
+  if (row?.carWhlNm) {
+    return row.carWhlNm;
+  }
   if (row?.mnuftrNm || row?.modelNm || row?.grdNm) {
     return [row?.mnuftrNm, row?.modelNm, row?.grdNm].filter(Boolean).join(" ");
   }
@@ -739,11 +800,121 @@ function readDrctPrice(row) {
   return `${value.toLocaleString("ko-KR")}만원`;
 }
 
+function readDrctImage(row) {
+  return row?.msizeImgPath || row?.ssizeImgPath || row?.lsizeImgPath || "";
+}
+
+function readDrctCarNo(row) {
+  const carNo = String(row?.cno || row?.carNo || "").trim();
+  return carNo || "-";
+}
+
+function readDrctYear(row) {
+  const prdcnYr = String(row?.prdcnYr || "").trim();
+  if (prdcnYr) {
+    return `${prdcnYr}년`;
+  }
+
+  const mfgDt = String(row?.mfgDt || "").trim();
+  if (/^\d{6}$/.test(mfgDt)) {
+    return `${mfgDt.slice(0, 4)}.${mfgDt.slice(4, 6)}`;
+  }
+  if (/^\d{4}$/.test(mfgDt)) {
+    return `${mfgDt}년`;
+  }
+  return "-";
+}
+
+function readDrctMileage(row) {
+  const milg = Number(row?.milg);
+  if (!Number.isFinite(milg) || milg <= 0) {
+    return "-";
+  }
+  return `${milg.toLocaleString("ko-KR")}km`;
+}
+
+function readDrctPowertrain(row) {
+  const fuel = String(row?.fuelNm || "").trim();
+  const transmission = String(row?.trnsmsnNm || "").trim();
+  if (fuel && transmission) {
+    return `${fuel} · ${transmission}`;
+  }
+  return fuel || transmission || "-";
+}
+
+function readDrctTotalCountForHeader() {
+  return parseNonNegativeInt(appState.drctTotalCount) ?? appState.drctRows.length;
+}
+
+function renderDrctPagination() {
+  if (appState.drctTotalPageCount <= 1) {
+    return "";
+  }
+
+  const current = appState.drctPageNo;
+  const total = appState.drctTotalPageCount;
+  const windowSize = 5;
+  const start = Math.max(1, current - Math.floor(windowSize / 2));
+  const end = Math.min(total, start + windowSize - 1);
+  const shiftedStart = Math.max(1, end - windowSize + 1);
+
+  const pageButtons = [];
+  for (let page = shiftedStart; page <= end; page += 1) {
+    pageButtons.push(`
+      <button
+        type="button"
+        class="drct-page-btn ${page === current ? "active" : ""}"
+        data-drct-page="${page}"
+        aria-current="${page === current ? "page" : "false"}"
+      >${page}</button>
+    `);
+  }
+
+  return `
+    <nav class="drct-pagination" aria-label="판매상품 페이지 이동">
+      <button
+        type="button"
+        class="drct-page-btn"
+        data-drct-page="${current - 1}"
+        ${current <= 1 ? "disabled" : ""}
+      >이전</button>
+      ${pageButtons.join("")}
+      <button
+        type="button"
+        class="drct-page-btn"
+        data-drct-page="${current + 1}"
+        ${current >= total ? "disabled" : ""}
+      >다음</button>
+      <span class="drct-page-status">${current} / ${total} 페이지</span>
+    </nav>
+  `;
+}
+
+function renderDrctThumbnail(title, imageSrc) {
+  if (!imageSrc) {
+    return `<div class="drct-thumb placeholder">이미지 없음</div>`;
+  }
+
+  return `
+    <div class="drct-thumb">
+      <img
+        src="${escapeHtml(imageSrc)}"
+        alt="${escapeHtml(title)}"
+        loading="lazy"
+        referrerpolicy="no-referrer"
+      />
+    </div>
+  `;
+}
+
 function renderDrctListSection() {
+  const totalCount = readDrctTotalCountForHeader();
+  const heading = `판매상품 리스트 (총 ${totalCount.toLocaleString("ko-KR")}건)`;
+
   if (!appState.selectedGradeCode) {
     return `
       <div class="drct-list-panel">
-        <h3 class="summary-title">판매상품 리스트</h3>
+        <h3 class="summary-title">${heading}</h3>
         ${renderStageStatus("4차(등급/트림) 카테고리를 선택하면 조회됩니다.")}
       </div>
     `;
@@ -752,7 +923,7 @@ function renderDrctListSection() {
   if (appState.drctLoadState === "loading") {
     return `
       <div class="drct-list-panel">
-        <h3 class="summary-title">판매상품 리스트</h3>
+        <h3 class="summary-title">${heading}</h3>
         ${renderStageStatus("판매상품을 조회하는 중입니다...")}
       </div>
     `;
@@ -761,7 +932,7 @@ function renderDrctListSection() {
   if (appState.drctLoadState === "error") {
     return `
       <div class="drct-list-panel">
-        <h3 class="summary-title">판매상품 리스트</h3>
+        <h3 class="summary-title">${heading}</h3>
         ${renderStageStatus(appState.errorMessageByStage.drct, true, "retry-drct-btn")}
       </div>
     `;
@@ -770,7 +941,7 @@ function renderDrctListSection() {
   if (appState.drctLoadState === "empty") {
     return `
       <div class="drct-list-panel">
-        <h3 class="summary-title">판매상품 리스트</h3>
+        <h3 class="summary-title">${heading}</h3>
         ${renderStageStatus("조건에 맞는 판매상품이 없습니다.")}
       </div>
     `;
@@ -779,21 +950,35 @@ function renderDrctListSection() {
   if (appState.drctLoadState !== "success") {
     return `
       <div class="drct-list-panel">
-        <h3 class="summary-title">판매상품 리스트</h3>
+        <h3 class="summary-title">${heading}</h3>
         ${renderStageStatus("조회 대기 중입니다.")}
       </div>
     `;
   }
 
   const rows = appState.drctRows
-    .slice(0, 50)
     .map((row) => {
       const title = readDrctTitle(row);
       const price = readDrctPrice(row);
+      const imageSrc = readDrctImage(row);
+      const carNo = readDrctCarNo(row);
+      const year = readDrctYear(row);
+      const mileage = readDrctMileage(row);
+      const powertrain = readDrctPowertrain(row);
+
       return `
         <li class="drct-item">
-          <div class="drct-title">${escapeHtml(title)}</div>
-          <div class="drct-meta">${escapeHtml(price)}</div>
+          <div class="drct-item-layout">
+            ${renderDrctThumbnail(title, imageSrc)}
+            <div class="drct-content">
+              <div class="drct-head">
+                <div class="drct-title">${escapeHtml(title)}</div>
+                <div class="drct-price">${escapeHtml(price)}</div>
+              </div>
+              <div class="drct-meta">차번호 ${escapeHtml(carNo)} · 연식 ${escapeHtml(year)} · 주행 ${escapeHtml(mileage)}</div>
+              <div class="drct-meta">${escapeHtml(powertrain)}</div>
+            </div>
+          </div>
         </li>
       `;
     })
@@ -801,8 +986,9 @@ function renderDrctListSection() {
 
   return `
     <div class="drct-list-panel">
-      <h3 class="summary-title">판매상품 리스트 (${appState.drctRows.length}건)</h3>
+      <h3 class="summary-title">${heading}</h3>
       <ul class="drct-list">${rows}</ul>
+      ${renderDrctPagination()}
     </div>
   `;
 }
@@ -930,6 +1116,7 @@ function bindEvents() {
         appState.selectedModelGroupCode,
         appState.selectedModelCode,
         appState.selectedGradeCode,
+        appState.drctPageNo,
       );
     });
   }
@@ -956,9 +1143,9 @@ function bindEvents() {
       }
 
       if (code === appState.selectedBrandCode) {
-        if (appState.modelGroupLoadState === "idle" || appState.modelGroupLoadState === "error") {
-          fetchModelGroups(code);
-        }
+        resetFromBrandSelection();
+        render();
+        fetchModelGroups(code);
         return;
       }
 
@@ -978,9 +1165,9 @@ function bindEvents() {
       }
 
       if (code === appState.selectedModelGroupCode) {
-        if (appState.modelLoadState === "idle" || appState.modelLoadState === "error") {
-          fetchModels(appState.selectedBrandCode, code);
-        }
+        resetFromModelGroupSelection();
+        render();
+        fetchModels(appState.selectedBrandCode, code);
         return;
       }
 
@@ -1000,9 +1187,9 @@ function bindEvents() {
       }
 
       if (code === appState.selectedModelCode) {
-        if (appState.gradeLoadState === "idle" || appState.gradeLoadState === "error") {
-          fetchGrades(appState.selectedBrandCode, appState.selectedModelGroupCode, code);
-        }
+        resetFromModelSelection();
+        render();
+        fetchGrades(appState.selectedBrandCode, appState.selectedModelGroupCode, code);
         return;
       }
 
@@ -1033,18 +1220,49 @@ function bindEvents() {
             appState.selectedModelGroupCode,
             appState.selectedModelCode,
             code,
+            1,
           );
         }
         return;
       }
 
       appState.selectedGradeCode = code;
+      resetFromGradeSelection();
       render();
       fetchDrctList(
         appState.selectedBrandCode,
         appState.selectedModelGroupCode,
         appState.selectedModelCode,
         code,
+        1,
+      );
+    });
+  });
+
+  const drctPageButtons = document.querySelectorAll("[data-drct-page]");
+  drctPageButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      if (
+        appState.drctLoadState === "loading" ||
+        !appState.selectedBrandCode ||
+        !appState.selectedModelGroupCode ||
+        !appState.selectedModelCode ||
+        !appState.selectedGradeCode
+      ) {
+        return;
+      }
+
+      const page = parsePositiveInt(button.getAttribute("data-drct-page"));
+      if (!page || page === appState.drctPageNo || page > appState.drctTotalPageCount) {
+        return;
+      }
+
+      fetchDrctList(
+        appState.selectedBrandCode,
+        appState.selectedModelGroupCode,
+        appState.selectedModelCode,
+        appState.selectedGradeCode,
+        page,
       );
     });
   });

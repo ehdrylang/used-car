@@ -64,9 +64,12 @@ export async function createKcarEnc(param) {
 }
 
 export function createDrctPlainParam(codes) {
+  const pageNo = Number.parseInt(String(codes?.pageno ?? ""), 10);
+  const limit = Number.parseInt(String(codes?.limit ?? ""), 10);
+
   return {
-    pageno: 1,
-    limit: 26,
+    pageno: Number.isFinite(pageNo) && pageNo > 0 ? pageNo : 1,
+    limit: Number.isFinite(limit) && limit > 0 ? limit : 26,
     orderFlag: true,
     orderBy: "time_deal_yn:desc|time_deal_end_dt:asc|event_ordr:asc|sort_ordr:asc",
     wr_eq_sell_dcd: "ALL",
