@@ -49,6 +49,10 @@ function normalizeCount(value) {
   return Number.isFinite(count) ? count : 0;
 }
 
+function isVisibleCount(item) {
+  return item.count > 0;
+}
+
 function sortByCountAndName(items, nameKey) {
   return [...items].sort((a, b) => {
     if (b.count !== a.count) {
@@ -129,7 +133,10 @@ function selectedBrand() {
 }
 
 function selectedModelGroup() {
-  return appState.modelGroups.find((item) => item.modelGrpCd === appState.selectedModelGroupCode) || null;
+  return (
+    appState.modelGroups.find((item) => item.modelGrpCd === appState.selectedModelGroupCode) ||
+    null
+  );
 }
 
 function selectedModel() {
@@ -204,7 +211,10 @@ async function fetchBrands() {
       return;
     }
 
-    const normalized = rows.map(normalizeBrandRow).filter((item) => item.mnuftrCd);
+    const normalized = rows
+      .map(normalizeBrandRow)
+      .filter((item) => item.mnuftrCd)
+      .filter(isVisibleCount);
     const kor = sortByCountAndName(
       normalized.filter((item) => item.carType === "KOR"),
       "pathNm",
@@ -255,7 +265,10 @@ async function fetchModelGroups(mnuftrCd) {
 
     const rows = Array.isArray(payload?.data) ? payload.data : [];
     const items = sortByCountAndName(
-      rows.map(normalizeModelGroupRow).filter((item) => item.modelGrpCd),
+      rows
+        .map(normalizeModelGroupRow)
+        .filter((item) => item.modelGrpCd)
+        .filter(isVisibleCount),
       "modelGrpNm",
     );
 
@@ -299,7 +312,10 @@ async function fetchModels(mnuftrCd, modelGrpCd) {
 
     const rows = Array.isArray(payload?.data) ? payload.data : [];
     const items = sortByCountAndName(
-      rows.map(normalizeModelRow).filter((item) => item.modelCd),
+      rows
+        .map(normalizeModelRow)
+        .filter((item) => item.modelCd)
+        .filter(isVisibleCount),
       "modelNm",
     );
 
@@ -343,7 +359,10 @@ async function fetchGrades(mnuftrCd, modelGrpCd, modelCd) {
 
     const rows = Array.isArray(payload?.data) ? payload.data : [];
     const items = sortByCountAndName(
-      rows.map(normalizeGradeRow).filter((item) => item.grdCd),
+      rows
+        .map(normalizeGradeRow)
+        .filter((item) => item.grdCd)
+        .filter(isVisibleCount),
       "grdNm",
     );
 
@@ -397,200 +416,207 @@ function renderStageStatus(message, error = false, retryButtonId = "") {
   `;
 }
 
-function renderSelectableItems({ items, selectedCode, codeKey, nameKey, subtitleKey, dataAttr }) {
-  const rows = items
-    .map((item) => {
-      const isSelected = item[codeKey] === selectedCode;
-      const subtitle = subtitleKey && item[subtitleKey] ? item[subtitleKey] : "";
+function renderTreeNode({
+  depth,
+  label,
+  count,
+  subtitle = "",
+  isActive = false,
+  isPath = false,
+  dataAttr,
+  code,
+}) {
+  const subtitleHtml = subtitle ? `<span class="tree-node-sub">${escapeHtml(subtitle)}</span>` : "";
 
+  return `
+    <button
+      class="tree-node depth-${depth} ${isActive ? "active" : ""} ${isPath ? "path" : ""}"
+      ${dataAttr}="${escapeHtml(code)}"
+      type="button"
+      aria-pressed="${isActive ? "true" : "false"}"
+    >
+      <span class="tree-node-main">
+        <span class="tree-node-label">${escapeHtml(label)}</span>
+        ${subtitleHtml}
+      </span>
+      <span class="tree-node-count">${count}</span>
+    </button>
+  `;
+}
+
+function renderBranchContainer(depth, body) {
+  return `<div class="tree-children depth-${depth}">${body}</div>`;
+}
+
+function renderGradesBranch() {
+  if (!appState.selectedModelCode) {
+    return "";
+  }
+
+  if (appState.gradeLoadState === "loading") {
+    return renderBranchContainer(
+      4,
+      renderStageStatus("등급/트림 목록을 불러오는 중입니다..."),
+    );
+  }
+  if (appState.gradeLoadState === "error") {
+    return renderBranchContainer(
+      4,
+      renderStageStatus(appState.errorMessageByStage.grade, true, "retry-grade-btn"),
+    );
+  }
+  if (appState.gradeLoadState === "empty") {
+    return renderBranchContainer(4, renderStageStatus("표시 가능한 등급/트림이 없습니다."));
+  }
+  if (appState.gradeLoadState !== "success" || !appState.grades.length) {
+    return "";
+  }
+
+  const rows = appState.grades
+    .map((grade) => {
+      const isActive = grade.grdCd === appState.selectedGradeCode;
       return `
-        <li class="brand-item">
-          <button
-            class="brand-btn ${isSelected ? "active" : ""}"
-            ${dataAttr}="${escapeHtml(item[codeKey])}"
-            type="button"
-            aria-pressed="${isSelected ? "true" : "false"}"
-          >
-            <span class="option-content">
-              <span class="option-main">${escapeHtml(item[nameKey])}</span>
-              ${subtitle ? `<span class="option-sub">${escapeHtml(subtitle)}</span>` : ""}
-            </span>
-            <span class="brand-count">${item.count}</span>
-          </button>
+        <li class="tree-item depth-4">
+          ${renderTreeNode({
+            depth: 4,
+            label: grade.grdNm,
+            count: grade.count,
+            isActive,
+            isPath: isActive,
+            dataAttr: "data-grade-code",
+            code: grade.grdCd,
+          })}
         </li>
       `;
     })
     .join("");
 
-  return `<ul class="brand-list" aria-label="카테고리 목록">${rows}</ul>`;
+  return renderBranchContainer(4, `<ul class="tree-list">${rows}</ul>`);
 }
 
-function renderBrandSection() {
-  const loadState = appState.brandLoadState;
+function renderModelsBranch() {
+  if (!appState.selectedModelGroupCode) {
+    return "";
+  }
+
+  if (appState.modelLoadState === "loading") {
+    return renderBranchContainer(3, renderStageStatus("세부 모델 목록을 불러오는 중입니다..."));
+  }
+  if (appState.modelLoadState === "error") {
+    return renderBranchContainer(
+      3,
+      renderStageStatus(appState.errorMessageByStage.model, true, "retry-model-btn"),
+    );
+  }
+  if (appState.modelLoadState === "empty") {
+    return renderBranchContainer(3, renderStageStatus("표시 가능한 세부 모델이 없습니다."));
+  }
+  if (appState.modelLoadState !== "success" || !appState.models.length) {
+    return "";
+  }
+
+  const rows = appState.models
+    .map((model) => {
+      const isActive = model.modelCd === appState.selectedModelCode;
+      return `
+        <li class="tree-item depth-3">
+          ${renderTreeNode({
+            depth: 3,
+            label: model.modelNm,
+            subtitle: model.prdcnYear,
+            count: model.count,
+            isActive,
+            isPath: isActive,
+            dataAttr: "data-model-code",
+            code: model.modelCd,
+          })}
+          ${isActive ? renderGradesBranch() : ""}
+        </li>
+      `;
+    })
+    .join("");
+
+  return renderBranchContainer(3, `<ul class="tree-list">${rows}</ul>`);
+}
+
+function renderModelGroupsBranch(brandCode) {
+  if (brandCode !== appState.selectedBrandCode) {
+    return "";
+  }
+
+  if (appState.modelGroupLoadState === "loading") {
+    return renderBranchContainer(2, renderStageStatus("모델군 목록을 불러오는 중입니다..."));
+  }
+  if (appState.modelGroupLoadState === "error") {
+    return renderBranchContainer(
+      2,
+      renderStageStatus(appState.errorMessageByStage.modelGroup, true, "retry-model-group-btn"),
+    );
+  }
+  if (appState.modelGroupLoadState === "empty") {
+    return renderBranchContainer(2, renderStageStatus("표시 가능한 모델군이 없습니다."));
+  }
+  if (appState.modelGroupLoadState !== "success" || !appState.modelGroups.length) {
+    return "";
+  }
+
+  const rows = appState.modelGroups
+    .map((modelGroup) => {
+      const isActive = modelGroup.modelGrpCd === appState.selectedModelGroupCode;
+      return `
+        <li class="tree-item depth-2">
+          ${renderTreeNode({
+            depth: 2,
+            label: modelGroup.modelGrpNm,
+            count: modelGroup.count,
+            isActive,
+            isPath: isActive,
+            dataAttr: "data-model-group-code",
+            code: modelGroup.modelGrpCd,
+          })}
+          ${isActive ? renderModelsBranch() : ""}
+        </li>
+      `;
+    })
+    .join("");
+
+  return renderBranchContainer(2, `<ul class="tree-list">${rows}</ul>`);
+}
+
+function renderCategoryTree() {
   const brands = appState.brandsByType[appState.brandType] || [];
 
-  let body = "";
-  if (loadState === "loading") {
-    body = renderStageStatus("브랜드 목록을 불러오는 중입니다...");
-  } else if (loadState === "error") {
-    body = renderStageStatus(appState.errorMessageByStage.brand, true, "retry-brand-btn");
-  } else if (loadState === "empty") {
-    body = renderStageStatus("조회 가능한 브랜드가 없습니다.");
-  } else if (!brands.length) {
-    body = renderStageStatus("해당 그룹의 브랜드가 없습니다.");
-  } else {
-    body = renderSelectableItems({
-      items: brands,
-      selectedCode: appState.selectedBrandCode,
-      codeKey: "mnuftrCd",
-      nameKey: "pathNm",
-      dataAttr: "data-brand-code",
-    });
+  if (appState.brandLoadState === "loading") {
+    return renderStageStatus("브랜드 목록을 불러오는 중입니다...");
+  }
+  if (appState.brandLoadState === "error") {
+    return renderStageStatus(appState.errorMessageByStage.brand, true, "retry-brand-btn");
+  }
+  if (appState.brandLoadState === "empty" || !brands.length) {
+    return renderStageStatus("표시 가능한 브랜드가 없습니다.");
   }
 
-  return `
-    <section class="category-section" aria-labelledby="brand-title">
-      <h2 id="brand-title" class="panel-title">1차 카테고리: 브랜드</h2>
-      <div class="type-tabs" role="tablist" aria-label="브랜드 그룹">
-        <button
-          type="button"
-          class="type-tab ${appState.brandType === "KOR" ? "active" : ""}"
-          role="tab"
-          aria-selected="${appState.brandType === "KOR" ? "true" : "false"}"
-          id="tab-kor"
-          data-brand-type="KOR"
-        >국산</button>
-        <button
-          type="button"
-          class="type-tab ${appState.brandType === "IMP" ? "active" : ""}"
-          role="tab"
-          aria-selected="${appState.brandType === "IMP" ? "true" : "false"}"
-          id="tab-imp"
-          data-brand-type="IMP"
-        >수입</button>
-      </div>
-      ${body}
-    </section>
-  `;
-}
+  const rows = brands
+    .map((brand) => {
+      const isActive = brand.mnuftrCd === appState.selectedBrandCode;
+      return `
+        <li class="tree-item depth-1">
+          ${renderTreeNode({
+            depth: 1,
+            label: brand.pathNm,
+            count: brand.count,
+            isActive,
+            isPath: isActive,
+            dataAttr: "data-brand-code",
+            code: brand.mnuftrCd,
+          })}
+          ${renderModelGroupsBranch(brand.mnuftrCd)}
+        </li>
+      `;
+    })
+    .join("");
 
-function renderModelGroupSection() {
-  if (!appState.selectedBrandCode) {
-    return `
-      <section class="category-section" aria-labelledby="model-group-title">
-        <h2 id="model-group-title" class="panel-title">2차 카테고리: 모델군</h2>
-        ${renderStageStatus("브랜드를 먼저 선택하세요.")}
-      </section>
-    `;
-  }
-
-  const loadState = appState.modelGroupLoadState;
-  let body = "";
-  if (loadState === "loading") {
-    body = renderStageStatus("모델군 목록을 불러오는 중입니다...");
-  } else if (loadState === "error") {
-    body = renderStageStatus(
-      appState.errorMessageByStage.modelGroup,
-      true,
-      "retry-model-group-btn",
-    );
-  } else if (loadState === "empty") {
-    body = renderStageStatus("조회 가능한 모델군이 없습니다.");
-  } else if (loadState === "idle") {
-    body = renderStageStatus("모델군을 불러올 준비 중입니다.");
-  } else {
-    body = renderSelectableItems({
-      items: appState.modelGroups,
-      selectedCode: appState.selectedModelGroupCode,
-      codeKey: "modelGrpCd",
-      nameKey: "modelGrpNm",
-      dataAttr: "data-model-group-code",
-    });
-  }
-
-  return `
-    <section class="category-section" aria-labelledby="model-group-title">
-      <h2 id="model-group-title" class="panel-title">2차 카테고리: 모델군</h2>
-      ${body}
-    </section>
-  `;
-}
-
-function renderModelSection() {
-  if (!appState.selectedModelGroupCode) {
-    return `
-      <section class="category-section" aria-labelledby="model-title">
-        <h2 id="model-title" class="panel-title">3차 카테고리: 세부 모델</h2>
-        ${renderStageStatus("모델군을 먼저 선택하세요.")}
-      </section>
-    `;
-  }
-
-  const loadState = appState.modelLoadState;
-  let body = "";
-  if (loadState === "loading") {
-    body = renderStageStatus("세부 모델 목록을 불러오는 중입니다...");
-  } else if (loadState === "error") {
-    body = renderStageStatus(appState.errorMessageByStage.model, true, "retry-model-btn");
-  } else if (loadState === "empty") {
-    body = renderStageStatus("조회 가능한 세부 모델이 없습니다.");
-  } else if (loadState === "idle") {
-    body = renderStageStatus("세부 모델을 불러올 준비 중입니다.");
-  } else {
-    body = renderSelectableItems({
-      items: appState.models,
-      selectedCode: appState.selectedModelCode,
-      codeKey: "modelCd",
-      nameKey: "modelNm",
-      subtitleKey: "prdcnYear",
-      dataAttr: "data-model-code",
-    });
-  }
-
-  return `
-    <section class="category-section" aria-labelledby="model-title">
-      <h2 id="model-title" class="panel-title">3차 카테고리: 세부 모델</h2>
-      ${body}
-    </section>
-  `;
-}
-
-function renderGradeSection() {
-  if (!appState.selectedModelCode) {
-    return `
-      <section class="category-section" aria-labelledby="grade-title">
-        <h2 id="grade-title" class="panel-title">4차 카테고리: 등급/트림</h2>
-        ${renderStageStatus("세부 모델을 먼저 선택하세요.")}
-      </section>
-    `;
-  }
-
-  const loadState = appState.gradeLoadState;
-  let body = "";
-  if (loadState === "loading") {
-    body = renderStageStatus("등급/트림 목록을 불러오는 중입니다...");
-  } else if (loadState === "error") {
-    body = renderStageStatus(appState.errorMessageByStage.grade, true, "retry-grade-btn");
-  } else if (loadState === "empty") {
-    body = renderStageStatus("조회 가능한 등급/트림이 없습니다.");
-  } else if (loadState === "idle") {
-    body = renderStageStatus("등급/트림을 불러올 준비 중입니다.");
-  } else {
-    body = renderSelectableItems({
-      items: appState.grades,
-      selectedCode: appState.selectedGradeCode,
-      codeKey: "grdCd",
-      nameKey: "grdNm",
-      dataAttr: "data-grade-code",
-    });
-  }
-
-  return `
-    <section class="category-section" aria-labelledby="grade-title">
-      <h2 id="grade-title" class="panel-title">4차 카테고리: 등급/트림</h2>
-      ${body}
-    </section>
-  `;
+  return `<div class="tree-scroll"><ul class="tree-list">${rows}</ul></div>`;
 }
 
 function renderSelectionSummary() {
@@ -627,16 +653,35 @@ function renderKcar() {
     <main class="page-shell kcar-layout">
       <aside class="panel side-panel">
         <button id="home-btn" class="back-btn" type="button">홈으로</button>
-        ${renderBrandSection()}
-        ${renderModelGroupSection()}
-        ${renderModelSection()}
-        ${renderGradeSection()}
+        <section class="category-section tree-section" aria-labelledby="tree-title">
+          <h2 id="tree-title" class="panel-title">카테고리 트리 선택</h2>
+          <p class="tree-hint">브랜드를 선택하면 하위 2~4차 카테고리가 들여쓰기 형태로 표시됩니다.</p>
+          <div class="type-tabs" role="tablist" aria-label="브랜드 그룹">
+            <button
+              type="button"
+              class="type-tab ${appState.brandType === "KOR" ? "active" : ""}"
+              role="tab"
+              aria-selected="${appState.brandType === "KOR" ? "true" : "false"}"
+              data-brand-type="KOR"
+            >국산</button>
+            <button
+              type="button"
+              class="type-tab ${appState.brandType === "IMP" ? "active" : ""}"
+              role="tab"
+              aria-selected="${appState.brandType === "IMP" ? "true" : "false"}"
+              data-brand-type="IMP"
+            >수입</button>
+          </div>
+          ${renderCategoryTree()}
+        </section>
       </aside>
 
       <section class="panel right-panel">
         <h2 class="panel-title">KCAR 조회</h2>
-        <p>1차부터 4차 카테고리까지 순서대로 선택할 수 있습니다.</p>
-        <p class="selection-hint">4차(등급/트림) 선택까지 완료하면 다음 단계인 매물 조회로 연결할 수 있습니다.</p>
+        <p>트리에서 1차부터 4차 카테고리까지 연속으로 선택할 수 있습니다.</p>
+        <p class="selection-hint">
+          <code>count=0</code> 카테고리는 표시하지 않으며, 4차(등급/트림)까지 선택하면 다음 단계로 연결할 수 있습니다.
+        </p>
         ${renderSelectionSummary()}
       </section>
     </main>
@@ -699,10 +744,18 @@ function bindEvents() {
   const retryGradeButton = document.querySelector("#retry-grade-btn");
   if (retryGradeButton) {
     retryGradeButton.addEventListener("click", () => {
-      if (!appState.selectedBrandCode || !appState.selectedModelGroupCode || !appState.selectedModelCode) {
+      if (
+        !appState.selectedBrandCode ||
+        !appState.selectedModelGroupCode ||
+        !appState.selectedModelCode
+      ) {
         return;
       }
-      fetchGrades(appState.selectedBrandCode, appState.selectedModelGroupCode, appState.selectedModelCode);
+      fetchGrades(
+        appState.selectedBrandCode,
+        appState.selectedModelGroupCode,
+        appState.selectedModelCode,
+      );
     });
   }
 
@@ -723,7 +776,14 @@ function bindEvents() {
   brandButtons.forEach((button) => {
     button.addEventListener("click", () => {
       const code = button.getAttribute("data-brand-code");
-      if (!code || code === appState.selectedBrandCode) {
+      if (!code) {
+        return;
+      }
+
+      if (code === appState.selectedBrandCode) {
+        if (appState.modelGroupLoadState === "idle" || appState.modelGroupLoadState === "error") {
+          fetchModelGroups(code);
+        }
         return;
       }
 
@@ -738,7 +798,14 @@ function bindEvents() {
   modelGroupButtons.forEach((button) => {
     button.addEventListener("click", () => {
       const code = button.getAttribute("data-model-group-code");
-      if (!code || code === appState.selectedModelGroupCode || !appState.selectedBrandCode) {
+      if (!code || !appState.selectedBrandCode) {
+        return;
+      }
+
+      if (code === appState.selectedModelGroupCode) {
+        if (appState.modelLoadState === "idle" || appState.modelLoadState === "error") {
+          fetchModels(appState.selectedBrandCode, code);
+        }
         return;
       }
 
@@ -753,12 +820,14 @@ function bindEvents() {
   modelButtons.forEach((button) => {
     button.addEventListener("click", () => {
       const code = button.getAttribute("data-model-code");
-      if (
-        !code ||
-        code === appState.selectedModelCode ||
-        !appState.selectedBrandCode ||
-        !appState.selectedModelGroupCode
-      ) {
+      if (!code || !appState.selectedBrandCode || !appState.selectedModelGroupCode) {
+        return;
+      }
+
+      if (code === appState.selectedModelCode) {
+        if (appState.gradeLoadState === "idle" || appState.gradeLoadState === "error") {
+          fetchGrades(appState.selectedBrandCode, appState.selectedModelGroupCode, code);
+        }
         return;
       }
 
