@@ -185,6 +185,41 @@ Access-Control-Request-Method: POST
   - `grdNm`: 등급/트림 표시명
   - `count`: 해당 등급 등록 매물 수
 
+### 5) 판매상품 리스트(`drct`)
+- Endpoint: `POST /api/kcar/drct-list`
+- Request
+```json
+{
+  "enc": "gEa/4VFh8fIVdgV57tSPerlTpuTd/En+dr9UDDEN8UoZOcnrKctaL37x9EBBnlEs+..."
+}
+```
+- Response `200 OK` (요약)
+```json
+{
+  "success": true,
+  "data": {
+    "rows": [
+      {
+        "mnuftrNm": "현대",
+        "modelNm": "그랜저 (GN7)",
+        "grdNm": "가솔린 2.5",
+        "prc": 3590,
+        "carCd": "..."
+      }
+    ]
+  },
+  "meta": {
+    "source": "kcar",
+    "fetchedAt": "2026-03-04T09:00:00.000Z"
+  }
+}
+```
+- 필드 의미 (UI 최소 사용)
+  - `data.rows[]`: 판매상품 리스트 배열
+  - `rows[].mnuftrNm`, `rows[].modelNm`, `rows[].grdNm`: 차량명 표시 조합
+  - `rows[].prc`: 차량 가격(만원 단위)
+  - `rows[].carCd`: 차량 식별 코드
+
 ## 실패 응답 검증
 ### 필수 파라미터 누락
 - Request
@@ -203,6 +238,27 @@ Content-Type: application/json
   "error": {
     "code": "BAD_REQUEST",
     "message": "mnuftrCd은(는) 필수입니다."
+  }
+}
+```
+
+### `enc` 누락
+- Request
+```http
+POST /api/kcar/drct-list
+Content-Type: application/json
+
+{"enc":""}
+```
+- Response
+  - Status: `400 Bad Request`
+  - Body
+```json
+{
+  "success": false,
+  "error": {
+    "code": "BAD_REQUEST",
+    "message": "enc은(는) 필수입니다."
   }
 }
 ```

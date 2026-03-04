@@ -222,6 +222,46 @@ async function fetchKcarGrades(sellType, mnuftrCd, modelGrpCd, modelCd) {
   );
 }
 
+async function fetchKcarDrctList(enc) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), config.kcarTimeoutMs);
+
+  try {
+    const response = await fetch(`${config.kcarApiBaseUrl}/bc/search/list/drct`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json, text/plain, */*",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ enc }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw apiError("UPSTREAM_ERROR", `KCAR API 응답 오류: HTTP ${response.status}`, 502);
+    }
+
+    const payload = await response.json();
+    if (!payload?.success) {
+      throw apiError("UPSTREAM_ERROR", "KCAR API 응답 형식이 올바르지 않습니다.", 502);
+    }
+
+    return payload?.data ?? {};
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw apiError("TIMEOUT", "KCAR API 호출 시간이 초과되었습니다.", 504);
+    }
+
+    if (error.code && error.status) {
+      throw error;
+    }
+
+    throw apiError("UPSTREAM_ERROR", "KCAR API 호출에 실패했습니다.", 502);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 function parseSellType(body) {
   const raw = body.sellType;
   if (raw == null || raw === "") {
@@ -446,6 +486,34 @@ const server = createServer(async (req, res) => {
       );
 
       toJson(res, 200, buildSuccessResponse(grades), corsHeaders);
+      return;
+    }
+
+    if (req.url === "/api/kcar/drct-list") {
+      if (req.method !== "POST") {
+        toJson(
+          res,
+          405,
+          {
+            success: false,
+            error: {
+              code: "METHOD_NOT_ALLOWED",
+              message: "POST 메서드만 허용됩니다.",
+            },
+          },
+          {
+            ...corsHeaders,
+            Allow: "POST,OPTIONS",
+          },
+        );
+        return;
+      }
+
+      const body = await readJsonBody(req);
+      const enc = parseRequiredCode(body, "enc");
+      const drctList = await fetchKcarDrctList(enc);
+
+      toJson(res, 200, buildSuccessResponse(drctList), corsHeaders);
       return;
     }
 

@@ -23,12 +23,17 @@
   - 상위 선택 변경 시 하위 단계 초기화
   - 단계별 로딩/오류/빈 데이터 상태 처리
   - `count=0` 카테고리 비노출
+- KCAR 판매상품 리스트(`drct`) 조회 구현
+  - 4차(등급/트림) 선택 시 리스트 자동 조회
+  - KCAR 규칙과 동일한 프론트 `enc` 암호화(AES-128-CBC, PKCS7) 적용
+  - 백엔드 프록시(`/api/kcar/drct-list`) 경유 호출
 - KCAR 백엔드 프록시 서버 구현
   - CORS 허용 origin 화이트리스트
   - `POST /api/kcar/brands` (KCAR 업스트림 대리 호출)
   - `POST /api/kcar/model-groups`
   - `POST /api/kcar/models`
   - `POST /api/kcar/grades`
+  - `POST /api/kcar/drct-list`
   - `GET /health`
   - 표준 에러 포맷(`BAD_REQUEST`, `UPSTREAM_ERROR`, `TIMEOUT`, `INTERNAL_ERROR`)
 
