@@ -1,4 +1,7 @@
-const KCAR_BRAND_ENDPOINT = "https://api.kcar.com/bc/search/group/mnuftr";
+const API_BASE_URL =
+  window.__USED_CAR_API_BASE_URL__ ||
+  (window.location.port === "4173" ? "http://localhost:8787" : "");
+const KCAR_BRAND_ENDPOINT = `${API_BASE_URL}/api/kcar/brands`;
 
 const appState = {
   platform: "home",
@@ -45,12 +48,10 @@ async function fetchBrands() {
     const response = await fetch(KCAR_BRAND_ENDPOINT, {
       method: "POST",
       headers: {
-        Accept: "application/json, text/plain, */*",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        wr_eq_sell_dcd: "ALL",
-        wr_in_multi_columns: "cntr_rgn_cd|cntr_cd",
+        sellType: "ALL",
       }),
     });
 

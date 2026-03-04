@@ -15,13 +15,23 @@
   - `kcar`: 활성, 클릭 시 KCAR 브랜드 선택 화면 진입
 - KCAR 브랜드 선택 단계 구현
   - 좌측 `국산/수입` 탭
-  - KCAR 브랜드 API 연동
+  - 백엔드 프록시(`/api/kcar/brands`) 연동
   - 브랜드 단일 선택
   - 로딩/오류/빈 데이터 상태 처리
+- KCAR 백엔드 프록시 서버 구현
+  - CORS 허용 origin 화이트리스트
+  - `POST /api/kcar/brands` (KCAR 업스트림 대리 호출)
+  - `GET /health`
+  - 표준 에러 포맷(`BAD_REQUEST`, `UPSTREAM_ERROR`, `TIMEOUT`, `INTERNAL_ERROR`)
 
 ## 실행 방법
-1. 프로젝트 루트에서 아래 명령으로 정적 서버 실행
+1. 백엔드 서버 실행 (프로젝트 루트 기준)
 ```bash
+node backend/src/server.js
+```
+2. 별도 터미널에서 프론트 정적 서버 실행
+```bash
+cd /Users/east.bridge/Documents/used-car
 python3 -m http.server 4173
 ```
-2. 브라우저에서 `http://localhost:4173/frontend/` 접속
+3. 브라우저에서 `http://localhost:4173/frontend/` 접속
