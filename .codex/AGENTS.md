@@ -67,10 +67,10 @@
 ## 파일 구조 규칙
 
 ```
+.codex/AGENTS.md       # 이 파일 — 협업 규칙 정의
 docs/
   features/     # 1단계: 기능 정의 Spec 파일
   plans/        # 2단계: 구현 계획 파일
-AGENTS.md       # 이 파일 — 협업 규칙 정의
 README.md       # 프로젝트 개요
 ENCAR-API.md    # 중고차플랫폼 엔카 API 명세
 ```
