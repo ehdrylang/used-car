@@ -1,0 +1,236 @@
+:root {
+  --bg: #f4f7fb;
+  --surface: #ffffff;
+  --text: #111827;
+  --muted: #6b7280;
+  --line: #d2dae8;
+  --primary: #1363df;
+  --primary-soft: #e8f0ff;
+  --danger-soft: #fde8e8;
+  --danger: #b42318;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Pretendard", "Noto Sans KR", system-ui, -apple-system, sans-serif;
+  color: var(--text);
+  background: radial-gradient(circle at 5% 5%, #dce9ff 0%, transparent 35%),
+    radial-gradient(circle at 95% 95%, #eaf7ff 0%, transparent 30%), var(--bg);
+  min-height: 100vh;
+}
+
+.page-shell {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(6, 34, 90, 0.07);
+}
+
+.home-wrap {
+  min-height: calc(100vh - 48px);
+  display: grid;
+  place-items: center;
+}
+
+.home-card {
+  width: min(560px, 100%);
+  padding: 32px;
+}
+
+.title {
+  margin: 0 0 8px;
+  font-size: 28px;
+}
+
+.platform-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+button {
+  font: inherit;
+}
+
+.platform-btn {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: 14px 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.platform-btn:hover:not(:disabled),
+.platform-btn:focus-visible {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(19, 99, 223, 0.15);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.platform-btn:disabled {
+  color: #9aa3b2;
+  background: #f2f4f7;
+  border-color: #d8dee9;
+  cursor: not-allowed;
+}
+
+.badge {
+  display: inline-flex;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: #616b79;
+  background: #e9edf3;
+}
+
+.kcar-layout {
+  min-height: calc(100vh - 48px);
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 16px;
+}
+
+.side-panel {
+  padding: 16px;
+}
+
+.right-panel {
+  padding: 28px;
+}
+
+.panel-title {
+  margin: 0 0 14px;
+  font-size: 20px;
+}
+
+.back-btn {
+  margin-bottom: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.type-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.type-tab {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.type-tab.active {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.brand-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 68vh;
+  overflow: auto;
+}
+
+.brand-item + .brand-item {
+  margin-top: 8px;
+}
+
+.brand-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.brand-btn:hover,
+.brand-btn:focus-visible {
+  border-color: var(--primary);
+  outline: none;
+}
+
+.brand-btn.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.brand-count {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.status {
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  color: var(--muted);
+}
+
+.status.error {
+  border-color: #f3b7b7;
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.retry-btn {
+  margin-top: 10px;
+  border: 1px solid #e39f9f;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.selection-hint {
+  margin-top: 12px;
+  color: var(--muted);
+}
+
+.selected-card {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fbfcff;
+  padding: 14px;
+}
+
+@media (max-width: 900px) {
+  .kcar-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .brand-list {
+    max-height: 38vh;
+  }
+}
