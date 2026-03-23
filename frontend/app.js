@@ -9,6 +9,7 @@ const KCAR_MODEL_GROUP_ENDPOINT = `${API_BASE_URL}/api/kcar/model-groups`;
 const KCAR_MODEL_ENDPOINT = `${API_BASE_URL}/api/kcar/models`;
 const KCAR_GRADE_ENDPOINT = `${API_BASE_URL}/api/kcar/grades`;
 const KCAR_DRCT_ENDPOINT = `${API_BASE_URL}/api/kcar/drct-list`;
+const ENCAR_VEHICLE_SCORE_ENDPOINT = `${API_BASE_URL}/api/encar/vehicle-score`;
 
 const appState = {
   platform: "home",
@@ -31,6 +32,10 @@ const appState = {
   drctPageNo: 1,
   drctTotalPageCount: 1,
   drctLimit: 26,
+  encarVehicleIdInput: "40324666",
+  encarLoadState: "idle",
+  encarScoredVehicles: [],
+  encarErrorMessage: "",
   errorMessageByStage: {
     brand: "",
     modelGroup: "",
@@ -43,6 +48,7 @@ const appState = {
     model: 0,
     grade: 0,
     drct: 0,
+    encar: 0,
   },
 };
 
@@ -58,6 +64,28 @@ function escapeHtml(text) {
 function normalizeCount(value) {
   const count = Number(value);
   return Number.isFinite(count) ? count : 0;
+}
+
+function formatSignedPoint(value) {
+  const point = Number(value);
+  if (!Number.isFinite(point) || point === 0) {
+    return "0점";
+  }
+  return `${point > 0 ? "+" : ""}${point}점`;
+}
+
+function formatEncarMileage(value) {
+  const mileage = Number(value);
+  if (!Number.isFinite(mileage) || mileage <= 0) {
+    return "-";
+  }
+  return `${mileage.toLocaleString("ko-KR")}km`;
+}
+
+function normalizeVehicleIdInput(value) {
+  return String(value ?? "")
+    .replaceAll(/\D/g, "")
+    .slice(0, 12);
 }
 
 function isVisibleCount(item) {
@@ -215,6 +243,12 @@ function resetDrctStage() {
   appState.drctLimit = 26;
   appState.drctLoadState = "idle";
   appState.errorMessageByStage.drct = "";
+}
+
+function resetEncarStage() {
+  appState.encarScoredVehicles = [];
+  appState.encarLoadState = "idle";
+  appState.encarErrorMessage = "";
 }
 
 function resetFromBrandSelection() {
@@ -459,6 +493,48 @@ function normalizeDrctRows(data) {
   return [];
 }
 
+async function fetchEncarVehicleScore(vehicleId) {
+  const normalizedVehicleId = normalizeVehicleIdInput(vehicleId);
+  if (!normalizedVehicleId) {
+    appState.encarLoadState = "error";
+    appState.encarErrorMessage = "조회할 ENCAR 차량 ID를 입력해주세요.";
+    appState.encarScoredVehicles = [];
+    render();
+    return;
+  }
+
+  const requestSeq = bumpRequestSeq("encar");
+  appState.encarVehicleIdInput = normalizedVehicleId;
+  appState.encarLoadState = "loading";
+  appState.encarErrorMessage = "";
+  render();
+
+  try {
+    const payload = await postJson(ENCAR_VEHICLE_SCORE_ENDPOINT, {
+      vehicleId: Number(normalizedVehicleId),
+    });
+
+    if (requestSeq !== appState.requestSeq.encar) {
+      return;
+    }
+
+    const vehicle = payload?.data || null;
+    appState.encarScoredVehicles = vehicle ? [vehicle] : [];
+    appState.encarLoadState = vehicle ? "success" : "empty";
+    render();
+  } catch {
+    if (requestSeq !== appState.requestSeq.encar) {
+      return;
+    }
+
+    appState.encarScoredVehicles = [];
+    appState.encarLoadState = "error";
+    appState.encarErrorMessage =
+      "ENCAR 차량 정보를 불러오지 못했습니다. 차량 ID를 확인하고 다시 시도해주세요.";
+    render();
+  }
+}
+
 async function fetchDrctList(mnuftrCd, modelGrpCd, modelCd, grdCd, pageNo = 1) {
   const safePageNo = parsePositiveInt(pageNo) || 1;
   const requestSeq = bumpRequestSeq("drct");
@@ -518,8 +594,8 @@ function renderHome() {
       <section class="panel home-card" aria-labelledby="home-title">
         <h1 class="title" id="home-title">중고차 매물을 검색할 사이트 선택</h1>
         <div class="platform-actions">
-          <button id="encar-btn" class="platform-btn" type="button" disabled aria-disabled="true">
-            encar <span class="badge">제공예정</span>
+          <button id="encar-btn" class="platform-btn" type="button">
+            encar <span class="badge">점수평가</span>
           </button>
           <button id="kcar-btn" class="platform-btn" type="button">k-car</button>
         </div>
@@ -993,6 +1069,170 @@ function renderDrctListSection() {
   `;
 }
 
+function renderEncarScorePill(score) {
+  if (score?.total == null) {
+    return `<span class="encar-score-pill exclude">평가 제외</span>`;
+  }
+
+  const total = Number(score.total);
+  const toneClass = total >= 20 ? "good" : total >= 0 ? "normal" : "warn";
+  return `<span class="encar-score-pill ${toneClass}">${formatSignedPoint(total)}</span>`;
+}
+
+function renderEncarBreakdown(score) {
+  const items = Array.isArray(score?.breakdown) ? score.breakdown : [];
+  if (!items.length) {
+    return "";
+  }
+
+  const rows = items
+    .map((item) => {
+      const point = Number(item?.points);
+      const pointClass = point > 0 ? "plus" : point < 0 ? "minus" : "zero";
+
+      return `
+        <li class="encar-breakdown-item">
+          <div class="encar-breakdown-head">
+            <span class="encar-breakdown-category">${escapeHtml(item?.category || "-")}</span>
+            <span class="encar-breakdown-points ${pointClass}">${escapeHtml(
+              formatSignedPoint(point),
+            )}</span>
+          </div>
+          <div class="encar-breakdown-reason">${escapeHtml(item?.reason || "")}</div>
+        </li>
+      `;
+    })
+    .join("");
+
+  return `<ul class="encar-breakdown-list">${rows}</ul>`;
+}
+
+function renderEncarVehicleListSection() {
+  if (appState.encarLoadState === "loading") {
+    return `
+      <div class="drct-list-panel">
+        <h3 class="summary-title">ENCAR 점수 리스트</h3>
+        ${renderStageStatus("ENCAR 차량 점수를 계산하는 중입니다...")}
+      </div>
+    `;
+  }
+
+  if (appState.encarLoadState === "error") {
+    return `
+      <div class="drct-list-panel">
+        <h3 class="summary-title">ENCAR 점수 리스트</h3>
+        ${renderStageStatus(appState.encarErrorMessage, true, "retry-encar-btn")}
+      </div>
+    `;
+  }
+
+  if (appState.encarLoadState === "empty") {
+    return `
+      <div class="drct-list-panel">
+        <h3 class="summary-title">ENCAR 점수 리스트</h3>
+        ${renderStageStatus("평가 가능한 ENCAR 차량이 없습니다.")}
+      </div>
+    `;
+  }
+
+  if (appState.encarLoadState !== "success") {
+    return `
+      <div class="drct-list-panel">
+        <h3 class="summary-title">ENCAR 점수 리스트</h3>
+        ${renderStageStatus("차량 ID를 입력하고 조회하면 점수와 근거가 리스트에 노출됩니다.")}
+      </div>
+    `;
+  }
+
+  const rows = appState.encarScoredVehicles
+    .map((vehicle) => {
+      const summary = vehicle?.summary || {};
+      const score = vehicle?.score || {};
+      const sourceLabels = [
+        vehicle?.sources?.record ? "차량기록" : "",
+        vehicle?.sources?.inspection ? "성능점검" : "",
+        vehicle?.sources?.diagnosis ? "엔카진단" : "",
+      ].filter(Boolean);
+
+      return `
+        <li class="drct-item encar-item">
+          <div class="encar-card-head">
+            <div>
+              <div class="drct-title">${escapeHtml(vehicle?.title || "ENCAR 차량")}</div>
+              <div class="drct-meta">
+                차량번호 ${escapeHtml(summary?.carNo || "-")} · 연식 ${escapeHtml(
+                  summary?.year || "-",
+                )}년 · 연료 ${escapeHtml(summary?.fuel || "-")}
+              </div>
+              <div class="drct-meta">
+                주행 ${escapeHtml(formatEncarMileage(summary?.mileage))} · 소유변경 ${escapeHtml(
+                  String(summary?.ownerChangeCnt ?? "-"),
+                )}회 · 최초등록 ${escapeHtml(summary?.firstRegistrationDate || "-")}
+              </div>
+            </div>
+            <div class="encar-score-box">
+              ${renderEncarScorePill(score)}
+              <div class="encar-score-caption">${escapeHtml(score?.verdict || "평가")}</div>
+            </div>
+          </div>
+          ${
+            score?.excludedReason
+              ? `<div class="encar-excluded-note">${escapeHtml(score.excludedReason)}</div>`
+              : ""
+          }
+          <div class="encar-source-list">
+            ${sourceLabels
+              .map((label) => `<span class="encar-source-chip">${escapeHtml(label)}</span>`)
+              .join("")}
+          </div>
+          ${renderEncarBreakdown(score)}
+        </li>
+      `;
+    })
+    .join("");
+
+  return `
+    <div class="drct-list-panel">
+      <h3 class="summary-title">ENCAR 점수 리스트</h3>
+      <ul class="drct-list encar-list">${rows}</ul>
+    </div>
+  `;
+}
+
+function renderEncar() {
+  return `
+    <main class="page-shell encar-layout">
+      <section class="panel right-panel full-panel">
+        <button id="home-btn" class="back-btn" type="button">홈으로</button>
+        <h2 class="panel-title">ENCAR 차량 점수 평가</h2>
+        <div class="selection-summary">
+          <h3 class="summary-title">조회 조건</h3>
+          <div class="encar-search-row">
+            <label class="summary-label" for="encar-vehicle-id">차량 ID</label>
+            <div class="encar-search-controls">
+              <input
+                id="encar-vehicle-id"
+                class="encar-id-input"
+                type="text"
+                inputmode="numeric"
+                value="${escapeHtml(appState.encarVehicleIdInput)}"
+                placeholder="예: 40324666"
+              />
+              <button id="encar-fetch-btn" class="platform-btn encar-fetch-btn" type="button">
+                조회
+              </button>
+            </div>
+            <div class="selection-hint">
+              현재 기본 차량 ID는 ${escapeHtml(appState.encarVehicleIdInput)} 입니다.
+            </div>
+          </div>
+        </div>
+        ${renderEncarVehicleListSection()}
+      </section>
+    </main>
+  `;
+}
+
 function renderKcar() {
   return `
     <main class="page-shell kcar-layout">
@@ -1035,11 +1275,27 @@ function render() {
     return;
   }
 
-  root.innerHTML = appState.platform === "home" ? renderHome() : renderKcar();
+  root.innerHTML =
+    appState.platform === "home"
+      ? renderHome()
+      : appState.platform === "encar"
+        ? renderEncar()
+        : renderKcar();
   bindEvents();
 }
 
 function bindEvents() {
+  const encarButton = document.querySelector("#encar-btn");
+  if (encarButton) {
+    encarButton.addEventListener("click", () => {
+      appState.platform = "encar";
+      render();
+      if (appState.encarLoadState === "idle" && !appState.encarScoredVehicles.length) {
+        fetchEncarVehicleScore(appState.encarVehicleIdInput);
+      }
+    });
+  }
+
   const kcarButton = document.querySelector("#kcar-btn");
   if (kcarButton) {
     kcarButton.addEventListener("click", () => {
@@ -1118,6 +1374,36 @@ function bindEvents() {
         appState.selectedGradeCode,
         appState.drctPageNo,
       );
+    });
+  }
+
+  const retryEncarButton = document.querySelector("#retry-encar-btn");
+  if (retryEncarButton) {
+    retryEncarButton.addEventListener("click", () => {
+      fetchEncarVehicleScore(appState.encarVehicleIdInput);
+    });
+  }
+
+  const encarVehicleIdInput = document.querySelector("#encar-vehicle-id");
+  if (encarVehicleIdInput) {
+    encarVehicleIdInput.addEventListener("input", () => {
+      appState.encarVehicleIdInput = normalizeVehicleIdInput(encarVehicleIdInput.value);
+      encarVehicleIdInput.value = appState.encarVehicleIdInput;
+    });
+
+    encarVehicleIdInput.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") {
+        return;
+      }
+      event.preventDefault();
+      fetchEncarVehicleScore(appState.encarVehicleIdInput);
+    });
+  }
+
+  const encarFetchButton = document.querySelector("#encar-fetch-btn");
+  if (encarFetchButton) {
+    encarFetchButton.addEventListener("click", () => {
+      fetchEncarVehicleScore(appState.encarVehicleIdInput);
     });
   }
 

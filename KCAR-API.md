@@ -33,3 +33,7 @@
   -H 'Content-Type: application/json' \
   --data-raw '{"enc":"gEa/4VFh8fIVdgV57tSPerlTpuTd/En+dr9UDDEN8UoZOcnrKctaL37x9EBBnlEs+z9OtaZ8r+4yNvEIVrnTxhI9GJedUUpJHexbViLXPxJpI4fdUZu+fvDJ3HPzkY0QPrxq+dmxJjWvbQAFrVZhhvsTnSQuL6jDEeONeJl9ZyGkpF6idS0U9oCx0OOQsSIAVkrM652FgRM+0vPi+ckZ8QJqXPMJlVUSSoWiWsgWdR0gwOMGrtkfODyxYFbtjO6jxPAntcM/fbKe+04jscGlTmRcav7RPITYZdvxUojK7TjwPkazkSz7rarTuQOrUZJYodQPKyQz/1+Qj5Rb+OBSWw=="}'
   - 설명: 1차까지든 2차까지든 카테고리가 선택된 경우에 인코딩된 어떤 값을 보내면 필터링된 차량 목록을 제공하는 API 인데 어떤 기준으로 인코딩했는지를 좀 찾아야한다. 이거는 나중에 찾아보도록 하자. 뭔가를 base64 인코딩한 것 같다. 디코딩했을 때 사람이 읽기에 적절해보이진 않는다.
+
+- curl 'https://api.kcar.com/bc/car-info-detail-of-ng?i_sCarCd=EC61319902&i_sPassYn=N&bltbdKnd=CM050' \
+  -H 'Accept: application/json, text/plain, */*'
+  - 설명: 차량 상세 정보 조회 API로 차량목록에서 아이디를 기준으로 조회하여 보험처리내역이나 판매자 정보 등 다양한 정보를 얻을 수 있다. 이것을 가지고 중고차 배점표에 따라 가감하여 레이팅을 결정할 수 있다.
